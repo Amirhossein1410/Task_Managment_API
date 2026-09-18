@@ -2,7 +2,7 @@
 
 A production-oriented RESTful Task Management API built with **FastAPI**, **PostgreSQL**, **SQLAlchemy**, **Alembic**, **JWT authentication**, **Docker**, **Docker Compose**, and **GitHub Actions**.
 
-The project demonstrates a complete backend development workflow, including authentication, database management, API validation, automated testing, containerization, and CI/CD.
+The project demonstrates a practical backend development and deployment workflow, including authentication, database management, API validation, automated testing, containerization, health checks, and automated Docker image publishing.
 
 ---
 
@@ -26,28 +26,30 @@ The project demonstrates a complete backend development workflow, including auth
 * PostgreSQL and API health checks
 * Container restart policy
 * Gunicorn with Uvicorn workers
-* GitHub Actions CI/CD
+* GitHub Actions CI
+* Automated Docker image publishing to Docker Hub
 
 ---
 
 ## Tech Stack
 
-| Technology       | Purpose                     |
-| ---------------- | --------------------------- |
-| Python 3.11      | Programming language        |
-| FastAPI          | Web framework               |
-| Pydantic         | Data validation and schemas |
-| PostgreSQL 16    | Relational database         |
-| SQLAlchemy       | ORM                         |
-| Alembic          | Database migrations         |
-| JWT              | Authentication              |
-| Passlib / bcrypt | Password hashing            |
-| Pytest           | Automated testing           |
-| Uvicorn          | ASGI server                 |
-| Gunicorn         | Production process manager  |
-| Docker           | Containerization            |
-| Docker Compose   | Multi-container application |
-| GitHub Actions   | CI/CD                       |
+| Technology       | Purpose                        |
+| ---------------- | ------------------------------ |
+| Python 3.11      | Programming language           |
+| FastAPI          | Web framework                  |
+| Pydantic         | Data validation and schemas    |
+| PostgreSQL 16    | Relational database            |
+| SQLAlchemy       | ORM                            |
+| Alembic          | Database migrations            |
+| JWT              | Authentication                 |
+| Passlib / bcrypt | Password hashing               |
+| Pytest           | Automated testing              |
+| Uvicorn          | ASGI server                    |
+| Gunicorn         | Production process manager     |
+| Docker           | Containerization               |
+| Docker Compose   | Multi-container application    |
+| GitHub Actions   | CI and Docker image publishing |
+| Docker Hub       | Container image registry       |
 
 ---
 
@@ -107,7 +109,7 @@ Task_Managment_API/
 
 ## Architecture
 
-The application follows a layered backend structure:
+The application follows a modular backend structure:
 
 ```text
 Client
@@ -126,8 +128,8 @@ FastAPI
   ├── Security
   │     └── JWT + Password Hashing
   │
-  ├── SQLAlchemy
-  │     └── ORM
+  ├── Database Layer
+  │     └── SQLAlchemy
   │
   ▼
 PostgreSQL
@@ -146,7 +148,7 @@ When running with Docker Compose:
 ┌──────────────────────┐
 │ PostgreSQL Container │
 │      PostgreSQL 16   │
-└──────────────────────┘
+└──────────┬───────────┘
            │
            ▼
      Docker Volume
@@ -178,7 +180,7 @@ Authenticated Requests
 
 Protected endpoints require a valid access token.
 
-Passwords are never stored as plain text.
+Passwords are never stored as plain text. Passwords are hashed before being stored in the database.
 
 ---
 
@@ -186,7 +188,7 @@ Passwords are never stored as plain text.
 
 The project uses **PostgreSQL 16** as its relational database.
 
-SQLAlchemy is used as the ORM layer between the application and PostgreSQL.
+**SQLAlchemy** is used as the ORM layer between the application and PostgreSQL.
 
 The main database entities are:
 
@@ -262,6 +264,8 @@ Do not commit:
 docker-compose.env
 ```
 
+For local development, create the required environment files and provide the appropriate database connection and secret configuration.
+
 ---
 
 # Running Locally
@@ -303,6 +307,8 @@ pip install -r requirements.txt
 
 Create a local `.env` file and provide the required configuration.
 
+A PostgreSQL instance must be available for the application.
+
 ## 5. Apply database migrations
 
 ```bash
@@ -327,7 +333,7 @@ http://127.0.0.1:8000
 
 # Running with Docker Compose
 
-Docker Compose runs both the API and PostgreSQL.
+Docker Compose runs the API and PostgreSQL as separate containers.
 
 Start the application:
 
@@ -360,10 +366,16 @@ Start them again:
 docker compose start
 ```
 
-Or recreate/start the stack:
+Recreate or start the stack:
 
 ```bash
 docker compose up -d
+```
+
+If the database schema has not been migrated yet, run:
+
+```bash
+docker compose exec api alembic upgrade head
 ```
 
 ---
@@ -376,7 +388,7 @@ PostgreSQL uses a Docker named volume:
 postgres_data
 ```
 
-This means removing and recreating the PostgreSQL container does not automatically delete the database data.
+The named volume allows PostgreSQL data to persist when the PostgreSQL container is removed and recreated.
 
 Avoid using:
 
@@ -406,13 +418,13 @@ Expected response:
 }
 ```
 
-Docker Compose also performs an internal health check against this endpoint.
+Docker Compose uses this endpoint for the API container health check.
 
 ### PostgreSQL
 
 PostgreSQL uses `pg_isready` to verify that the database is ready to accept connections.
 
-The API waits for PostgreSQL to become healthy before starting.
+The API service is configured to wait for PostgreSQL to become healthy before starting.
 
 ---
 
@@ -452,6 +464,8 @@ Tests cover:
 
 The test suite uses a separate PostgreSQL database configuration.
 
+The GitHub Actions workflow also runs the automated test suite against PostgreSQL.
+
 ---
 
 # Production Server
@@ -464,11 +478,11 @@ Gunicorn
 Uvicorn Worker
 ```
 
-This allows Gunicorn to manage multiple Uvicorn worker processes.
+Gunicorn manages multiple Uvicorn worker processes.
 
 The current Docker configuration uses two workers.
 
-For machine-learning model serving, worker count should be chosen carefully because separate workers can result in multiple copies of an in-memory model.
+For machine-learning model serving, worker count should be chosen carefully because separate worker processes can result in multiple copies of an in-memory model.
 
 ---
 
@@ -488,15 +502,15 @@ Run the container:
 docker run -p 8000:8000 task-management-api
 ```
 
-Docker Compose is recommended for running the complete application because it also provides the PostgreSQL service and persistent storage.
+Docker Compose is recommended for running the complete application because it also provides the PostgreSQL service, persistent storage, environment configuration, and health checks.
 
 ---
 
 # CI/CD — GitHub Actions
 
-GitHub Actions is used to automatically validate the project whenever changes are pushed to the repository or a Pull Request targets the `master` branch.
+GitHub Actions automatically validates the project whenever changes are pushed to the `master` branch or a Pull Request targets the `master` branch.
 
-The CI pipeline performs the following steps:
+The workflow performs the following steps:
 
 ```text
 Git Push / Pull Request
@@ -515,17 +529,20 @@ Git Push / Pull Request
           ↓
     Build Docker Image
           ↓
-        Success
+ Authenticate with Docker Hub
+          ↓
+    Push Docker Image
 ```
 
-The Docker build runs only after the test job succeeds.
+The Docker build and Docker Hub publishing job runs only after the test job succeeds.
 
-This helps ensure that:
+The pipeline verifies that:
 
 * Dependencies can be installed successfully.
-* Database migrations work.
+* Database migrations work correctly.
 * Automated tests pass.
 * The Docker image can be built successfully.
+* The Docker image can be published to Docker Hub.
 
 The workflow configuration is located at:
 
@@ -533,13 +550,21 @@ The workflow configuration is located at:
 .github/workflows/ci.yml
 ```
 
+The current pipeline provides:
+
+* **Continuous Integration (CI)**
+* **Automated Docker image building**
+* **Automated Docker image publishing to Docker Hub**
+
+A full Continuous Deployment step is not currently configured because the project does not use a VPS or cloud server.
+
 ---
 
 # Docker Hub
 
-The Docker image can be published to Docker Hub through GitHub Actions.
+The project Docker image is automatically published to Docker Hub through GitHub Actions after the test job succeeds.
 
-The intended CI/CD flow is:
+The workflow is:
 
 ```text
 Git Push
@@ -555,7 +580,22 @@ Authenticate with Docker Hub
 Push Image
 ```
 
-Docker Hub credentials should be stored as **GitHub Actions Secrets**, not directly inside the workflow file.
+Docker image repository:
+
+```text
+amirhossein1410/task-management-api
+```
+
+The workflow publishes two tags:
+
+```text
+latest
+<git-commit-sha>
+```
+
+The commit SHA tag provides a unique reference to the Docker image built from a specific Git commit.
+
+Docker Hub credentials are stored as **GitHub Actions Secrets** and are not included directly in the repository or workflow configuration.
 
 ---
 
@@ -569,14 +609,15 @@ The project follows several basic security practices:
 * Secret environment files are excluded from Git.
 * Dependencies are defined in `requirements.txt`.
 * API input is validated using Pydantic.
+* Database operations are handled through SQLAlchemy and parameterized database operations.
 
-Never commit real credentials, passwords, API keys, JWT secrets, or other sensitive configuration to the repository.
+Never commit real credentials, passwords, API keys, JWT secrets, database credentials, or other sensitive configuration to the repository.
 
 ---
 
 # Development Workflow
 
-The intended development workflow is:
+The development workflow is:
 
 ```text
 Create / Modify Feature
@@ -589,12 +630,18 @@ Git Push
         ↓
 GitHub Actions
         ↓
-Tests
+Start PostgreSQL
         ↓
-Docker Build
+Run Alembic Migrations
         ↓
-Docker Hub
+Run Pytest
+        ↓
+Build Docker Image
+        ↓
+Push Image to Docker Hub
 ```
+
+This workflow provides automated validation and Docker image delivery for successful pushes to the `master` branch.
 
 ---
 
@@ -602,20 +649,24 @@ Docker Hub
 
 This project is designed to demonstrate practical backend and software-engineering skills relevant to production-oriented Python and AI/ML engineering workflows.
 
-It provides experience with:
+It provides practical experience with:
 
 * REST API development
-* Authentication
+* Authentication and JWT
 * Relational databases
-* ORM
-* Database migrations
-* Automated testing
-* Containerization
-* Multi-container applications
-* Production API serving
-* CI/CD
+* SQLAlchemy ORM
+* Database migrations with Alembic
+* Automated testing with Pytest
+* Containerization with Docker
+* Multi-container applications with Docker Compose
+* PostgreSQL persistence with Docker volumes
+* API health checks
+* Production API serving with Gunicorn and Uvicorn workers
+* Git and GitHub
+* GitHub Actions
+* Automated Docker image delivery to Docker Hub
 
-The architecture also provides a foundation for a future **ML/DL model-serving API**, where a trained machine-learning model can be exposed through FastAPI and later containerized and deployed.
+The architecture also provides a foundation for a future **ML/DL model-serving API**, where a trained machine-learning model can be exposed through FastAPI, containerized with Docker, and eventually deployed to a production server.
 
 ---
 
