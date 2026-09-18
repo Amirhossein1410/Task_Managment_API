@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16.15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: task_management_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d task_management_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/task_management_test
+          TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/task_management_test
+          SECRET_KEY: test-secret-key
+        run: alembic upgrade head
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/task_management_test
+          TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/task_management_test
+          SECRET_KEY: test-secret-key
+        run: pytest
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ secrets.DOCKERHUB_USERNAME }}/task-management-api:latest \
+            -t ${{ secrets.DOCKERHUB_USERNAME }}/task-management-api:${{ github.sha }} .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/task-management-api:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/task-management-api:${{ github.sha }}

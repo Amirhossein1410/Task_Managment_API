@@ -1,0 +1,17 @@
+.env
+.env.*
+taskmanagementapi/
+.venv/
+venv/
+
+__pycache__/
+*.pyc
+.pytest_cache/
+
+.idea/
+.vscode/
+
+*.log
+.dockerignore
+docker-compose.env
+
